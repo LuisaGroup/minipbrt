@@ -3717,9 +3717,9 @@ namespace minipbrt {
     double lambda_max = 2.8977721e-3 / t * 1e9; // in nm
     double Le_max = emission(lambda_max);
     // Normalize the XYZ values so that the Y value is equal to the maximum
-    xyz[0] = x * scale / Le_max;
-    xyz[1] = y * scale / Le_max;
-    xyz[2] = z * scale / Le_max;
+    xyz[0] = x * scale / Le_max * 1e-3;
+    xyz[1] = y * scale / Le_max * 1e-3;
+    xyz[2] = z * scale / Le_max * 1e-3;
   }
 
 
