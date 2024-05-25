@@ -30,6 +30,7 @@ SOFTWARE.
 #include <cstdio>
 #include <limits>
 #include <map>
+#include <string>
 #include <vector>
 
 
@@ -757,6 +758,8 @@ namespace minipbrt {
 
 
   struct MetalMaterial : public Material {
+    std::vector<float> eta_spd;
+    std::vector<float> k_spd;
     ColorTex eta        = { kInvalidIndex, {0.5f, 0.5f, 0.5f} }; // TODO: indices of refraction for copper
     ColorTex k          = { kInvalidIndex, {0.5f, 0.5f, 0.5f} }; // TODO: absorption coefficients for copper
     FloatTex uroughness = { kInvalidIndex, 0.01f              };

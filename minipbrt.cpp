@@ -3317,7 +3317,7 @@ namespace minipbrt {
     return (*f != nullptr) ? 0 : errno;
   #endif
   }
-  
+
 
   static inline int64_t file_pos(FILE* file)
   {
@@ -3690,34 +3690,36 @@ namespace minipbrt {
 
   static void blackbody_to_xyz(const float blackbody[2], float xyz[3])
   {
-    const float c = 299792458.0f;
-    const float h = 6.62606957e-34f;
-    const float kb = 1.3806488e-23f;
+    static constexpr double c = 299792458.0;
+    static constexpr double h = 6.62606957e-34;
+    static constexpr double kb = 1.3806488e-23;
 
-    float t = blackbody[0]; // temperature in Kelvin
-
-    xyz[0] = 0.0f;
-    xyz[1] = 0.0f;
-    xyz[2] = 0.0f;
-    for (int i = 0; i < nSpectralSamples; i++) {
-      float wl = lerp(float(i) / float(nSpectralSamples), sampledLambdaStart, sampledLambdaEnd);
-
+    double t = blackbody[0]; // temperature in Kelvin
+    auto emission = [](auto wl /* in nm */) noexcept {
       // Calculate `Le`, the amount of light emitted at wavelength = `wl`.
       // `wl` is deliberately chose to match the wavelengths at which the X, Y
       // and Z curves are sampled.
-      float l = wl * 1e-9f;
-      float lambda5 = (l * l) * (l * l) * l;
-      float Le = (2.0f * h * c * c) / (lambda5 * (std::exp((h * c) / (l * kb  * t)) - 1));
+      double l = wl * 1e-9;
+      double lambda5 = (l * l) * (l * l) * l;
+      return (2.0 * h * c * c) / (lambda5 * (std::exp((h * c) / (l * kb  * t)) - 1));
+    };
 
-      xyz[0] += X[i] * Le;
-      xyz[1] += Y[i] * Le;
-      xyz[2] += Z[i] * Le;
+    double x = 0, y = 0, z = 0;
+    for (int i = 0; i < nSpectralSamples; i++) {
+      float wl = std::lerp((double)sampledLambdaStart, (double)sampledLambdaEnd, double(i) / double(nSpectralSamples));
+        auto Le = emission(wl);
+      x += X[i] * Le;
+      y += Y[i] * Le;
+      z += Z[i] * Le;
     }
 
-    float scale = blackbody[1] * float(sampledLambdaEnd - sampledLambdaStart) / float(CIE_Y_integral * nSpectralSamples);
-    xyz[0] *= scale;
-    xyz[1] *= scale;
-    xyz[2] *= scale;
+    double scale = blackbody[1] * double(sampledLambdaEnd - sampledLambdaStart) / double(CIE_Y_integral * nSpectralSamples);
+    double lambda_max = 2.8977721e-3 / t * 1e9; // in nm
+    double Le_max = emission(lambda_max);
+    // Normalize the XYZ values so that the Y value is equal to the maximum
+    xyz[0] = x * scale / Le_max;
+    xyz[1] = y * scale / Le_max;
+    xyz[2] = z * scale / Le_max;
   }
 
 
@@ -3919,7 +3921,7 @@ namespace minipbrt {
         inv.rows[r][c] *= invDet;
       }
     }
-    
+
     return inv;
   }
 
@@ -6244,8 +6246,20 @@ namespace minipbrt {
     case MaterialType::Metal:
       {
         MetalMaterial* metal = new MetalMaterial();
-        color_texture_param("eta",        &metal->eta);
-        color_texture_param("k",          &metal->k);
+        auto parse_spd = [this](auto name) noexcept {
+          if (auto desc = find_param(name, ParamType::Samples)) {
+            std::vector<float> values(desc->count);
+            std::memcpy(values.data(), m_temp.data() + desc->offset, desc->count * sizeof(float));
+            return values;
+          }
+          return std::vector<float>{};
+        };
+        if ((metal->eta_spd = parse_spd("eta")).empty()) {
+          color_texture_param("eta", &metal->eta);
+        }
+        if ((metal->k_spd = parse_spd("k")).empty()) {
+          color_texture_param("k", &metal->k);
+        }
         float_texture_param("uroughness", &metal->uroughness);
         float_texture_param("vroughness", &metal->vroughness);
         bool_param("remaproughness",      &metal->remaproughness);
@@ -8023,8 +8037,16 @@ namespace minipbrt {
 
   bool Parser::color_texture_param(const char *name, ColorTex *dest)
   {
-    bool hasTex = texture_param(name, TextureData::Spectrum, &dest->texture);
+    bool hasTex = texture_param(name, TextureData::Spectrum, &dest->texture) ||
+        texture_param(name, TextureData::Float, &dest->texture);
     bool hasValue = spectrum_param(name, dest->value);
+    if (!hasValue) {
+      if (float x = 0.f; (hasValue = float_param(name, &x))) {
+        dest->value[0] = x;
+        dest->value[1] = x;
+        dest->value[2] = x;
+      }
+    }
     return hasTex | hasValue;
   }
 
